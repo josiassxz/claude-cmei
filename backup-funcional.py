@@ -40,14 +40,14 @@ class PetitionRequest(BaseModel):
     mother_phone: str
     mother_email: str
     cmei_name: str
-    cmei_address: str
-    request_date: str
 
 class PetitionResponse(BaseModel):
     petition: str
     stop_reason: str | None
     usage: dict | None
     
+
+
 PETITION_TEMPLATE = """**AO JUIZADO DA INFÂNCIA E DA JUVENTUDE DA COMARCA DE GOIÂNIA -- GOIÁS**
 
 **{child_name}, nascida em {child_birth_date}, inscrita no CPF sob o n° {child_cpf},** representada por sua genitora, **{mother_name}**, {mother_qualification}, endereço eletrônico {mother_email}, residente e domiciliada na {mother_address}, telefone/WhatsApp {mother_phone}, por intermédio da **DEFENSORIA PÚBLICA DO ESTADO DE GOIÁS**, vem, ajuizar
@@ -159,8 +159,9 @@ Goiânia, 30 de setembro de 2024.
 
 **{defender_name}**
 **Defensora Pública do Estado de Goiás**"""
-   
-    
+
+
+
 class LegalPetitionGenerator:
     def __init__(self, api_key: str | None = None):
         try:
@@ -170,16 +171,17 @@ class LegalPetitionGenerator:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to initialize Anthropic client: {str(e)}")
 
-    def generate_facts(self, request: PetitionRequest) -> tuple[str, str, dict]:
+    def generate_facts(self, prompt: str, cmei_name: str) -> str:
         """Gera apenas a seção dos fatos usando a IA"""
         try:
             system_message = """Você deve gerar apenas a seção de FATOS para uma petição judicial de vaga em CMEI. 
             A seção deve conter:
             1. Não pode faltar! Data do cadastro no padrao xxxx-xxx para ser preenchido
-            2. Não pode faltar! Nome do CMEI solicitado e seu Endereço
+            2. Não pode faltar! Nome do CMEI solicitado q é {cmei_name} e seu Endereço {cmei_address}
             3. Situação da matrícula (sempre aguardando vaga)
             4. Situação específica familiar que justifica a necessidade da vaga
             5. Menção à impossibilidade financeira de pagar escola particular
+            
             
             Importante:
             - Traga uma resposta o mais completa possivel que possa deixar os fatos mais explicativos possivel de forma juridica
@@ -189,24 +191,16 @@ class LegalPetitionGenerator:
             - NÃO inclua nenhuma fundamentação legal ou jurisprudência
             - Foque apenas nos fatos concretos do caso"""
 
-
-            enhanced_prompt = f"""
-            Informações do caso:
-            - CMEI solicitado: {request.cmei_name}
-            - Endereço do CMEI: {request.cmei_address}
-            - Data da solicitação: {request.request_date}
-            - Detalhes específicos: {request.prompt}
-            """
-
             response = self.client.messages.create(
                 model="claude-3-haiku-20240307",
+                # model="claude-3-sonnet-20240229",
                 max_tokens=4000,
                 temperature=0.7,
                 system=system_message,
                 messages=[
                     {
                         "role": "user",
-                        "content": enhanced_prompt
+                        "content": f"Gere a seção de fatos para uma petição de vaga em CMEI usando estas informações: {prompt}"
                     }
                 ]
             )
@@ -230,7 +224,7 @@ class LegalPetitionGenerator:
     async def gerar_peticao(self, request: PetitionRequest) -> tuple[str, str, dict]:
         try:
             # Gera apenas a seção dos fatos
-            facts, stop_reason, usage = self.generate_facts(request)
+            facts, stop_reason, usage = self.generate_facts(request.prompt, request.cmei_name)
             
             # Monta a petição completa usando o template
             petition = PETITION_TEMPLATE.format(
